@@ -29,5 +29,4 @@ target
 # Profiling
 perf.data
 perf.data.old
-flamegraph.svg
 *.stackcollapse
