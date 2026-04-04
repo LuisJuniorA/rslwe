@@ -10,7 +10,7 @@ impl Matrix {
     }
 
     pub fn add_mod(&self, other: &Matrix, q: u64) -> Matrix {
-        assert_eq!((self.rows, self.cols), (other.rows, other.rows));
+        assert_eq!((self.rows, self.cols), (other.rows, other.cols));
 
         let data = self
             .data

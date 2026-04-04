@@ -5,6 +5,7 @@ use crate::lwe::lwe_public_key::PublicKey;
 use crate::utils::distribution::Sampler;
 use crate::utils::matrix::Matrix;
 use crate::utils::random::RngState;
+
 pub struct Ciphertext {
     pub a: Vec<u64>,
     pub b: u64,
@@ -22,10 +23,11 @@ impl LweCypher {
             params,
         }
     }
+
     pub fn encrypt(&mut self, pk: &PublicKey, bit: bool) -> Ciphertext {
         let q = self.params.q;
         let m = self.params.m;
-        let n = pk.a.cols;
+        let n = self.params.n;
 
         let r = config::DefaultLweDistribution::r_distribution().fill(
             m,
@@ -33,43 +35,49 @@ impl LweCypher {
             &mut self.rng,
         );
 
-        let mut system = vec![0u64; n];
-        let mut solutions = 0u64;
+        let mut u = vec![0u64; n];
+        let mut v = 0u64;
 
         for i in 0..m {
-            let ri = r[i];
+            let ri = r[i] as u128; // Cast en u128 pour éviter les overflows lors des multiplications
 
-            let start = i * n;
-            let row = &pk.a.data[start..start + n];
-
-            for (y, &val) in row.iter().enumerate() {
-                let prod = val.wrapping_mul(ri);
-                system[y] = (system[y].wrapping_add(prod)) % q;
+            for j in 0..n {
+                let a_ij = pk.a.get(i, j) as u128;
+                u[j] = ((u[j] as u128 + a_ij * ri) % (q as u128)) as u64;
             }
 
-            let sol_prod = pk.b.data[i].wrapping_mul(ri);
-            solutions = solutions.wrapping_add(sol_prod);
+            let b_i = pk.b.get(i, 0) as u128;
+            v = ((v as u128 + b_i * ri) % (q as u128)) as u64;
         }
 
         let offset = if bit { q / 2 } else { 0 };
-        solutions = (solutions.wrapping_add(offset)) % q;
+        v = (v + offset) % q;
 
-        Ciphertext {
-            a: system,
-            b: solutions,
-        }
+        Ciphertext { a: u, b: v }
     }
 
-    pub fn decrypt(&self, pk: &PrivateKey, ciphertext: Ciphertext) -> bool {
-        let result = ciphertext.a.iter().enumerate().map(|(i, value)| value * pk.s.data[i]).sum::<u64>();
-        let delta = if result < ciphertext.b {self.params.q - result - ciphertext.b} else {result - ciphertext.b};
-        delta % self.params.q <= self.params.q/2
+    pub fn decrypt(&self, sk: &PrivateKey, ciphertext: Ciphertext) -> bool {
+        let q = self.params.q;
+        let mut inner_product = 0u64;
+
+        for j in 0..self.params.n {
+            let u_j = ciphertext.a[j] as u128;
+            let s_j = sk.s.get(j, 0) as u128;
+            inner_product = ((inner_product as u128 + u_j * s_j) % (q as u128)) as u64;
+        }
+
+        let delta = (ciphertext.b + q - inner_product) % q;
+
+        let q_over_4 = q / 4;
+        let three_q_over_4 = q - q_over_4;
+
+        delta >= q_over_4 && delta <= three_q_over_4
     }
 
     pub fn keygen(&mut self) -> (PublicKey, PrivateKey) {
         let a = Matrix {
             data: config::DefaultLweDistribution::a_distribution().fill(
-                self.params.n,
+                self.params.m * self.params.n,
                 self.params.q,
                 &mut self.rng,
             ),
@@ -79,11 +87,11 @@ impl LweCypher {
 
         let s = Matrix {
             data: config::DefaultLweDistribution::s_distribution().fill(
-                self.params.m,
+                self.params.n,
                 self.params.q,
                 &mut self.rng,
             ),
-            rows: self.params.m,
+            rows: self.params.n,
             cols: 1,
         };
 
@@ -96,11 +104,11 @@ impl LweCypher {
             rows: self.params.m,
             cols: 1,
         };
-
         let b = a.mul_mod(&s, self.params.q).add_mod(&e, self.params.q);
 
         let sk = PrivateKey { s };
         let pk = PublicKey { a, b };
+
         (pk, sk)
     }
 }

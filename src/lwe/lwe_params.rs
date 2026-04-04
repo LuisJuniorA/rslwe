@@ -2,6 +2,7 @@
 ///
 /// This struct defines the security level and the algebraic structure
 /// used for key generation, encryption, and decryption.
+#[derive(Copy, Clone)]
 pub struct LweParams {
     /// The ciphertext modulus (q).
     ///

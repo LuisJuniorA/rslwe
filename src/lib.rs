@@ -1,5 +1,5 @@
-mod lwe;
-mod utils;
+pub mod lwe;
+pub mod utils;
 
 pub mod config {
     use crate::utils::distribution::binary::Binary;
