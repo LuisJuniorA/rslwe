@@ -25,3 +25,9 @@ target
 # Added by cargo
 
 /target
+
+# Profiling
+perf.data
+perf.data.old
+flamegraph.svg
+*.stackcollapse
