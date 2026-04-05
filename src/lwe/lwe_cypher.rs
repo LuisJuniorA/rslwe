@@ -29,11 +29,7 @@ impl LweCypher {
         let m = self.params.m;
         let n = self.params.n;
 
-        let r = config::DefaultLweDistribution::r_distribution().fill(
-            m,
-            q,
-            &mut self.rng,
-        );
+        let r = config::DefaultLweDistribution::r_distribution().fill(m, q, &mut self.rng);
 
         let mut u = vec![0u64; n];
         let mut v = 0u64;

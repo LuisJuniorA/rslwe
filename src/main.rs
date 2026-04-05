@@ -70,9 +70,7 @@ fn string_to_bits(s: &str) -> Vec<bool> {
 fn bits_to_string(bits: &[bool]) -> String {
     let bytes: Vec<u8> = bits
         .chunks(8)
-        .map(|chunk| {
-            chunk.iter().fold(0, |acc, &b| (acc << 1) | (b as u8))
-        })
+        .map(|chunk| chunk.iter().fold(0, |acc, &b| (acc << 1) | (b as u8)))
         .collect();
     String::from_utf8_lossy(&bytes).into_owned()
 }
