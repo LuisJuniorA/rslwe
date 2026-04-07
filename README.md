@@ -65,7 +65,48 @@ To run the demo where Alice and Bob exchange an encrypted string:
 cargo run --release
 ```
 
-### Benchmarking
+### 🧪 Advanced Benchmarking & Resource Isolation
+
+The project uses a sophisticated benchmarking stack to ensure "clean room" results. By strictly bounding CPU and Memory, we eliminate OS jitter and frequency scaling noise.
+
+#### 1. Resource Isolation (`isolate.sh`)
+
+The `isolate.sh` utility leverages **Linux cgroups v2** (via `systemd-run`) to strictly bound the benchmarking process. This prevents results from being skewed by background tasks.
+
+```bash
+# Example: Run benchmarks with 50% CPU quota, 512MB RAM, pinned to Core 2
+./isolate.sh -c 50000 -m 512M -p 2 -- cargo bench
+```
+
+**Key Isolation Features:**
+
+- **CPU Pinning**: Locks the process to a specific core (default: Core 2) to minimize cache migrations and context switching.
+- **Quota Enforcement**: Strict CPU time (μs) and Memory limits (default: 1GB).
+- **Governor Control**: Automatically switches the CPU to `performance` mode during execution and restores `powersave` on exit.
+
+#### 2. Automated Data Collection (`collect_data.sh`)
+
+The `collect_data.sh` script automates the entire performance pipeline. It triggers the isolated benchmarks and regenerates the `./docs/data` directory with fresh metrics.
+
+```bash
+# Regenerate all data with custom iterations (-k: keygen, -e: encrypt, -d: decrypt)
+# Note : custom iterations are not working for now.
+# Default values : k = 100, e = 1000, d = 1000
+./collect_data.sh -k 100 -e 1000 -d 1000
+```
+
+**Pipeline Workflow:**
+
+1.  **Environment Capture**: Generates `env.json` with CPU model, frequency limits, and timestamp.
+2.  **Iai-Callgrind**: Performs hardware-agnostic instruction counting and cache profiling.
+3.  **Criterion**: Conducts statistical time analysis and generates distribution plots.
+4.  **Ownership Management**: Automatically fixes `target/` permissions after `sudo` operations to ensure data remains accessible.
+
+---
+
+### 📊 Manual Benchmarking
+
+Alternatively, you can run specific tools directly (though results may be less stable without the isolation script):
 
 ```bash
 # Statistical time benchmarks (Criterion)
@@ -74,11 +115,16 @@ cargo bench --bench criterion_lwe
 # Hardware-agnostic instruction counting (Iai-Callgrind)
 cargo bench --bench iai_lwe
 
-# Fast & versatile micro-benchmarking with arguments (Divan)
+# Fast & versatile micro-benchmarking (Divan)
 cargo bench --bench divan_lwe
 ```
 
----
+### 📈 Analytics Output
+
+After running the collector, visualize the results in:
+
+- **[Interactive Performance Dashboard](./docs/index.html)**: A custom view merging instructions and timing.
+- **[Criterion Reports](./docs/reports/criterion/index.html)**: Full statistical breakdown and overhead analysis.
 
 ## 📂 Project Architecture
 
