@@ -3,10 +3,7 @@ use rslwe::lwe::lwe_cypher::LweCypher;
 use rslwe::lwe::lwe_params::LweParams;
 
 fn main() {
-    let args: Vec<String> = std::env::args()
-        .filter(|arg| arg != "--bench")
-        .collect();
-    divan::Divan::from_args().main();
+    divan::main();
 }
 
 #[bench(args = [512, 1024])]
