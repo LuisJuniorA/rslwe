@@ -6,6 +6,7 @@ use crate::utils::distribution::Sampler;
 use crate::utils::matrix::Matrix;
 use crate::utils::random::RngState;
 
+#[derive(Clone)]
 pub struct Ciphertext {
     pub a: Vec<u64>,
     pub b: u64,
@@ -34,12 +35,11 @@ impl LweCypher {
         let mut u = vec![0u64; n];
         let mut v = 0u64;
 
-        for i in 0..m {
-            let ri = r[i] as u128; // Cast en u128 pour éviter les overflows lors des multiplications
-
-            for j in 0..n {
+        for (i, &ri_raw) in r.iter().enumerate().take(m) {
+            let ri = ri_raw as u128;
+            for (j, uj) in u.iter_mut().enumerate().take(n) {
                 let a_ij = pk.a.get(i, j) as u128;
-                u[j] = ((u[j] as u128 + a_ij * ri) % (q as u128)) as u64;
+                *uj = ((*uj as u128 + a_ij * ri) % (q as u128)) as u64;
             }
 
             let b_i = pk.b.get(i, 0) as u128;

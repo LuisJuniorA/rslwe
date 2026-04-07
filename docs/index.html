@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>RSLWE Performance Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: ui-sans-serif, system-ui; background: #f8fafc; padding: 2rem; color: #1e293b; }
+        .container { max-width: 1400px; margin: 0 auto; }
+        .env-info { background: #1e293b; color: #f8fafc; padding: 1rem; border-radius: 8px; margin-bottom: 2rem; font-size: 0.85rem; display: flex; justify-content: space-between; }
+        .section-title { grid-column: 1 / -1; margin-top: 2rem; padding-bottom: 0.5rem; border-bottom: 3px solid #e2e8f0; color: #1e293b; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+        .card { background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1.5rem; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); }
+        .full { grid-column: 1 / -1; }
+        h1 { font-size: 1.8rem; margin-bottom: 1.5rem; }
+        h2 { font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 1rem; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        th, td { padding: 0.75rem; text-align: left; border-bottom: 1px solid #f1f5f9; }
+        th { background: #f8fafc; color: #64748b; font-weight: 600; }
+        .m { font-family: ui-monospace, monospace; font-weight: 600; color: #2563eb; }
+        iframe { width: 100%; height: 600px; border: none; border-radius: 8px; margin-top: 1rem; }
+        .chart-container { height: 300px; position: relative; }
+        .tag { padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: bold; text-transform: uppercase; }
+        .tag-unit { background: #dcfce7; color: #166534; }
+        .tag-total { background: #dbeafe; color: #1e40af; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>RSLWE Performance Dashboard</h1>
+        <div id="envBanner" class="env-info">Loading environment context...</div>
+
+        <h2 class="section-title">🚀 Unitary Performance <span class="tag tag-unit">Per 1 Operation</span></h2>
+        <div class="grid">
+            <div class="card">
+                <h2>Instructions / Op (Log)</h2>
+                <div class="chart-container"><canvas id="iaiChartUnit"></canvas></div>
+            </div>
+            <div class="card">
+                <h2>Time / Op (ms)</h2>
+                <div class="chart-container"><canvas id="timeChartUnit"></canvas></div>
+            </div>
+            <div class="card">
+                <h2>Est. CPU Cycles / Op</h2>
+                <div class="chart-container"><canvas id="cycChartUnit"></canvas></div>
+            </div>
+        </div>
+
+        <h2 class="section-title">📊 Total Benchmark Effort <span class="tag tag-total">Full Execution</span></h2>
+        <div class="grid">
+            <div class="card">
+                <h2>Total Instructions (Log)</h2>
+                <div class="chart-container"><canvas id="iaiChartTotal"></canvas></div>
+            </div>
+            <div class="card">
+                <h2>Total Time (ms)</h2>
+                <div class="chart-container"><canvas id="timeChartTotal"></canvas></div>
+            </div>
+             <div class="card">
+                <h2>Total Cache Hits (L1)</h2>
+                <div class="chart-container"><canvas id="l1ChartTotal"></canvas></div>
+            </div>
+        </div>
+
+        <div class="card full">
+            <h2>Detailed Metrics Comparison</h2>
+            <table id="statsTable">
+                <thead>
+                    <tr>
+                        <th>Operation</th>
+                        <th>Iters</th>
+                        <th style="border-left: 2px solid #e2e8f0">Total Instr.</th>
+                        <th>Total Time</th>
+                        <th style="border-left: 2px solid #e2e8f0">Instr / Op</th>
+                        <th>Cycles / Op</th>
+                        <th>Time / Op</th>
+                        <th>L1 Hits / Op</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <div class="card full">
+            <h2>Detailed Criterion Reports</h2>
+            <iframe src="reports/criterion/report/index.html"></iframe>
+        </div>
+    </div>
+
+    <script>
+        const ops = ['keygen', 'encrypt', 'decrypt'];
+        const getIaiVal = (m) => {
+            if (!m || !m.metrics) return 0;
+            const d = m.metrics.Left || m.metrics.Both || m.metrics.Right;
+            return d ? (d.Int || d[0].Int || 0) : 0;
+        };
+
+        function createChart(id, label, labels, data, color, isLog = false) {
+            return new Chart(document.getElementById(id), {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{ label: label, data: data, backgroundColor: color }]
+                },
+                options: {
+                    maintainAspectRatio: false,
+                    scales: { 
+                        y: { 
+                            type: isLog ? 'logarithmic' : 'linear',
+                            beginAtZero: !isLog
+                        } 
+                    }
+                }
+            });
+        }
+
+        async function init() {
+            const env = await (await fetch('data/env.json')).json();
+            document.getElementById('envBanner').innerHTML = `
+                <span><strong>CPU:</strong> ${env.cpu}</span>
+                <span><strong>RAM:</strong> ${env.ram_limit}</span>
+                <span><strong>Core:</strong> ${env.core_affinity}</span>
+                <span><strong>Date:</strong> ${env.date}</span>
+            `;
+
+            const stats = {};
+            for (const op of ops) {
+                stats[op] = { ir: 0, cyc: 0, l1: 0, time: 0, iters: env.iterations[op] || 1 };
+                try {
+                    const iai = await (await fetch(`data/iai_bench_${op}.json`)).json();
+                    const m = iai.profiles[0].summaries.parts[0].metrics_summary.Callgrind;
+                    stats[op].ir = getIaiVal(m.Ir);
+                    stats[op].cyc = getIaiVal(m.EstimatedCycles);
+                    stats[op].l1 = getIaiVal(m.L1hits);
+                } catch(e) {}
+                try {
+                    const cri = await (await fetch(`data/criterion_LWE%20${op.charAt(0).toUpperCase() + op.slice(1)}.json`)).json();
+                    stats[op].time = cri.mean.point_estimate;
+                } catch(e) {}
+            }
+
+            const tbody = document.querySelector('#statsTable tbody');
+            const labels = ops.map(o => o.toUpperCase());
+
+            ops.forEach(op => {
+                const s = stats[op];
+                tbody.innerHTML += `
+                    <tr>
+                        <td><strong>${op.toUpperCase()}</strong></td>
+                        <td>${s.iters}</td>
+                        <td style="border-left: 2px solid #e2e8f0">${s.ir.toLocaleString()}</td>
+                        <td>${((s.time * s.iters) / 1000000).toFixed(2)} ms</td>
+                        <td class="m" style="border-left: 2px solid #e2e8f0">${Math.round(s.ir / s.iters).toLocaleString()}</td>
+                        <td class="m">${Math.round(s.cyc / s.iters).toLocaleString()}</td>
+                        <td class="m" style="color:#10b981">${(s.time / 1000000).toFixed(4)} ms</td>
+                        <td>${Math.round(s.l1 / s.iters).toLocaleString()}</td>
+                    </tr>
+                `;
+            });
+
+            // Unit Charts
+            createChart('iaiChartUnit', 'Instr / Op', labels, ops.map(o => stats[o].ir / stats[o].iters), '#2563eb', true);
+            createChart('timeChartUnit', 'ms / Op', labels, ops.map(o => stats[o].time / 1000000), '#10b981');
+            createChart('cycChartUnit', 'Cycles / Op', labels, ops.map(o => stats[o].cyc / stats[o].iters), '#f59e0b');
+
+            // Total Charts
+            createChart('iaiChartTotal', 'Total Instr', labels, ops.map(o => stats[o].ir), '#3b82f6', true);
+            createChart('timeChartTotal', 'Total ms', labels, ops.map(o => (stats[o].time * stats[o].iters) / 1000000), '#059669');
+            createChart('l1ChartTotal', 'Total L1 Hits', labels, ops.map(o => stats[o].l1), '#8b5cf6');
+        }
+        init();
+    </script>
+</body>
+</html>
